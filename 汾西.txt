@@ -1,0 +1,47 @@
+这是request：
+Request{method=POST, url=http://api.mock-host.com/rest/n/feed/hot?pm_tag=&extId=1f7b1929c72cfb54bd39bdc224770f74&cold=false, tags={class a1.l=com.yxcorp.gifshow.retrofit.service.KwaiApiService.getHotItems() [, 1f7b1929c72cfb54bd39bdc224770f74, false, 7, 2, false, 20, false, 17, 1, 1, 1, null, false, null, dd0f2d05-e139-4a23-8e2e-2f34a4b75cfa, 0.73, false, 2, , 0, false, 17, {"click":[],"follow":[],"like":[]}, [{"ci":32305,"lac":1028,"mcc":460,"mnc":0,"radio":"gsm","rssi":0}], null, null]}}
+这是map_a:
+{mod=smartisan(DT1901A), pm_tag=, lon=116.41025, country_code=cn, extId=1f7b1929c72cfb54bd39bdc224770f74, kpn=KUAISHOU, oc=GENERIC, egid=DFP7C4E82EC6725113DB97BCF6F0B527E06835C728A61DBBF24438C0E297348B, sbh=38, hotfix_ver=, sh=960, appver=7.4.20.13991, nbh=0, socName=Qualcomm MSM8996, max_memory=192, isp=CMCC, kcv=188, browseType=1, kpf=ANDROID_PHONE, ddpi=240, did=ANDROID_c1f016d3389a7061, net=WIFI, app=0, ud=1958956987, c=GENERIC, sys=ANDROID_5.1.1, cold=false, sw=540, ftt=, ll=CepYpfRM9UNAEcdLN4lBGl1A, language=zh-cn, darkMode=false, iuid=, lat=39.916411, did_gt=1591358047793, ver=7.4}
+这是map_b:
+{cellList=[{"ci":32305,"lac":1028,"mcc":460,"mnc":0,"radio":"gsm","rssi":0}], kuaishou.api_st=Cg9rdWFpc2hvdS5hcGkuc3QSoAGJsriWP16L_Ts4Qzz83qjhnipb36xLS0JgS6Igd6M-CbsW4scwOCn5Mi-OsBjjFHKjTxxFZP-FEhPT_AaD_rQG2-GiVczj1HC7V6bPWS6181KDsHmO4F0mZhbHfUtrc4N5AGAP-NFoTeeBXTloJv9_GVIgYHSbc8-8Xs6pICL5RD3yezIJWn50TnFhoBHh2FQ8Rd6WJpvew0gfD-NY0LcLGhIgH75JxRxHRbwpYsUawhz3w5UiIBjbWDsjfL1ZQ1ngRkMI4GYZjXNH-BkMQvZR1PHmYc5mKAUwAQ, source=1, volume=0.73, adChannel=, thanosSpring=false, token=cebd61d467dc4369ac367ab3392a55b9-1958956987, seid=dd0f2d05-e139-4a23-8e2e-2f34a4b75cfa, pv=false, needInterestTag=false, client_key=3c2cd3f3, coldStart=false, count=20, pcursor=1, pageCount=2, passThrough=0, os=android, refreshTimes=1, newUserAction={"click":[],"follow":[],"like":[]}, backRefresh=false, id=17, newUserRefreshTimes=17, type=7, page=2}
+这是str:
+b72b7d7c5683084ab356fd62ada155df
+
+1. 快手在夜神模拟器上打不开，在雷电模拟器上之前还行，现在打开后马上停止运行，可能快手也能识别模拟器吧，也可能是识别了Frida
+2. com.yxcorp.gifshow.util.CPU类，getClock的参数一是com.yxcorp.gifshow.App@31b34a7b， 三是22，二是一个byte array，得出的结果是32位的字符串，3f17aa4dc0c0e7d2a08f3e75c5f62b64这样的，可能是sig。参数二怎么得来的还不知道。貌似确实是，把url中的参数放入map1，把表单中的参数放入map2，把map1和map2中的元素以key=value的形式放入arraylist中，对arraylist进行sort，把arraylist中的元素按顺序拼接成一个字符串str，把str转成bytearray。
+3. 得到sig后，前面加上url的部分域名，比如域名是http://api.mock-host.com/rest/n/feed/hot?，那么就是/rest/n/feed/hot加上sig，得到的字符串传入com.yxcorp.gifshow.KwaiApp的getSigWrapper方法，得到的结果就是__NS_sig3
+4. sig加一个内部token相加然后sha256就可以了？str2是token_client_salt？token_client_salt登录之后才有，每次登录都会变化。直接调用QCurrentUser.getTokenClientSalt()会报cannot call instance method without an instance，自从用了script_k（ instantiate objects from by calling $new()，但xposed要怎么实现？），也不报了，token_client_salt也返回了，但NStokensig怎么来的？难道真的是sig加颜值，getbytes，sha-256，再字节移位？
+5. 在获取sig三兄弟前，url和params不能urlencode。
+6. 现在的难点在于，severExptag
+
+逻辑：
+用户id的话，直播栏就能获取到。那么，此后第一步自然是确认主播是否开始直播。为此，应该用https://apissl.gifshow.com/rest/n/feed/profile2?这个接口，参数除了userId便是referer=ks://profile/233724095/-1/-1/8，后者变化的似乎只有中间那一串，而那不正是userId吗？因此，倘若不被拦截，此此接口岂不妙哉？倘若要用其他接口，那么referer或将难以拼接。至此方可确认主播是否正在主播。若在直播，便取其liveStreamId和serverExpTag，有此二者，获取直播页面有如探囊取物。探囊个屁，那个serverExpTag没用的！什么嘛，获取直播页不需要那个tag的，此时tag是feed_live|cJaLmR2TN7M|805329160|1_a/0_unknown0这样的。如此，只需要liveStreamId，直播页也获取到了。但是否真的需要直播页呢，这个问题我们以后再做商议。此后，再以同样的方式获取商品栏。商品详情页似乎无法通过h5端获取（竟被引导到一个滑动验证码页），app端亦不行，恐怕要面临新的参数了，或js或Java。或者干脆用https://app.kwaixiaodian.com/merchant/shop/detail?id=295449515275页面数据么好了，可它返回竟是空。实际上，滑动验证码的出现乃是因为我忘加了headers，商品详情页是可以获取到的，而且h5和app似是同一接口，只是必须带cookie，cookie能坚持多久尚不得而知。然而此时发现，上述的商品id并非商品栏中的商品id。嗯，如果是快手小店，则可以用数字id，如果是快手有赞，则需要用字母id，原来如此，实在麻烦。
+此外，可通过用户分享页https://live.kuaishou.com/profile/gy690638445?shareObjectId=690638445来确定主播是否开始直播，shareObjectId实为userId，且此接口不必带cookie，真是妙哉。不由想到，淘宝和抖音能否采取同样的方法呢，如果参数shareId能轻易得到？
+此外，商品栏貌似有originalStock和soldStock，倘若originalStock是直播前库存，soldStock是本场销量，那便很好。倘若originalStock是进货时的库存，soldStock是全网销量，那便没啥用。只有限时秒杀的商品才有，欸。
+今日发现，那些快手有赞的商品，可通过https://kuaishou.youzan.com/wscgoods/detail/26wpk5l0f02ga接口获取信息，26wpk5l0f02ga作为唯一参数位于商品栏jumpUrl中两个3A之间。
+https://live.kuaishou.com/profile/这个接口，后边跟kwaiId或share_info（eid）中的那个id都可以的。其中kwaiId应该是首页展示的id。share_info在两个地方有：https://api3.gifshow.com/rest/n/feed/profile（有时是profile2）和https://apissl.gifshow.com/rest/n/feed/profile（有时是profile2）。KwaiId的话，除了以上两个地方，还有三个：https://apissl.gifshow.com/rest/n/user/profile/adBusiness?，https://api3.gifshow.com/rest/n/live/infoForLive?，https://api3.gifshow.com/rest/n/user/profile/live?。如此一来，利用https://live.kuaishou.com/profile/这个网页端分享连接去判断是否开始直播似乎就行不通了。似乎可以走https://app.kwaixiaodian.com/rest/app/grocery/product/self/midPage/list这个快手小店的接口？如果绝大部分有用的主播都有快手小店，而且这个接口不容易被封，那是可以的。
+没法判断主播是否是个人主播。
+
+连接frida：
+adb devices
+adb connect
+adb forward tcp:27042 tcp:27042 
+adb shell
+cd data
+cd ./local
+cd ./tmp
+./frida-server
+
+1.想起去年那九个月，像做了一场梦一样
+2.比我小好几岁的都结婚了，我年纪太大了啊，属于我的年代已经过去了。快30了还没有一点进展（我说的是没钱，因为一旦有钱，就可以有很多的吧？），一生七八十年也未免太短了，200年勉强还行。
+3.说起来七八十年是一个很尴尬的时间吧？长到不忍心浪费掉又短到做不来任何正经事。
+4.风景好，闲适安逸并且房价在5000以下的地方有哪些？我在考虑养老吗？不是，只是正好目前理想的生活跟养老的模式有些相似。嗯，想去云南玩一个月啊，迪庆什么的。
+5.怎么会梦见向宇在成都，周六的凌晨？
+6.我是在等死了吗？可我是还不想死的啊
+7.这周四端午了，想回家又不想回家。盼内心的空旷和清澈，空旷就一定是空虚吗，可以反而是充盈的吧，那种感觉？
+8.假期不撞上双休日，就必须拿一天出来工作吗？下周要连续上班六天了啊。自有记忆以来就是这么不慷慨
+9.说到不慷慨，是在说谁不慷慨呢？是生产力吧？生产力不够就要挨打。因为打和被打这件事总是存在的。如果没有人要去打任何人，现在的生产力已经很够用了吧？是不是可以做点更重要的事了呢？
+10.那些说“有人还活着就已经死了”的人，还有说大多数人从哪个时间开始就已经死了的人，是多么骄傲啊。
+11.不努力也是可以的吧？如果不想努力的话，就不努力好了。
+12.大四考过一笔和一口是什么水平啊，我硕士已经毕业两年整了，二笔考了四次还没过，二口考了一次只觉得怀疑人生。我太差劲了吧。以前本科的时候只觉得自己很厉害，很骄傲，现在看来，我果然是什么事也做不成。
+13.我应该去哪里，去做什么？都一样的吧，最后都会变成空虚和迷惘
